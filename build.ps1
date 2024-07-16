@@ -37,7 +37,16 @@ param(
     [switch] $Bootstrap,
 
     [Parameter(ParameterSetName='BuildAll')]
-    [switch] $Catalog
+    [switch] $Catalog,
+
+    [Parameter(ParameterSetName='Package')]
+    [switch] $BuildNupkg,
+
+    [Parameter(ParameterSetName='Package')]
+    [switch] $CopyManifest,
+
+    [Parameter(ParameterSetName='Package')]
+    [switch] $Signed
 
 )
 
@@ -84,6 +93,12 @@ END {
         "Bootstrap" {
             Install-DotNet
             return
+        }
+        "Package" {
+            if($CopyManifest) {
+                Copy-Manifest -signed:$Signed
+            }
+            Start-CreatePackage -signed:$Signed
         }
         "Test" {
             Test-ScriptAnalyzer -InProcess:$InProcess

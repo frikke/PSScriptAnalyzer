@@ -63,6 +63,9 @@ namespace Microsoft.Windows.PowerShell.ScriptAnalyzer.BuiltinRules
         [ConfigurableRuleProperty(defaultValue: false)]
         public bool CheckParameter { get; protected set; }
 
+        [ConfigurableRuleProperty(defaultValue: false)]
+        public bool IgnoreAssignmentOperatorInsideHashTable { get; protected set; }
+
         public override void ConfigureRule(IDictionary<string, object> paramValueMap)
         {
             base.ConfigureRule(paramValueMap);
@@ -230,22 +233,25 @@ namespace Microsoft.Windows.PowerShell.ScriptAnalyzer.BuiltinRules
                 if (lcurly.Previous == null
                     || !IsPreviousTokenOnSameLine(lcurly)
                     || lcurly.Previous.Value.Kind == TokenKind.LCurly
+                    || lcurly.Previous.Value.Kind == TokenKind.Dot
                     || ((lcurly.Previous.Value.TokenFlags & TokenFlags.MemberName) == TokenFlags.MemberName))
                 {
                     continue;
                 }
 
-                if (!IsPreviousTokenApartByWhitespace(lcurly))
+                if (IsPreviousTokenApartByWhitespace(lcurly) || IsPreviousTokenLParen(lcurly))
                 {
-                    yield return new DiagnosticRecord(
-                        GetError(ErrorKind.BeforeOpeningBrace),
-                        lcurly.Value.Extent,
-                        GetName(),
-                        GetDiagnosticSeverity(),
-                        tokenOperations.Ast.Extent.File,
-                        null,
-                        GetCorrections(lcurly.Previous.Value, lcurly.Value, lcurly.Next.Value, false, true).ToList());
+                    continue;
                 }
+                
+                yield return new DiagnosticRecord(
+                    GetError(ErrorKind.BeforeOpeningBrace),
+                    lcurly.Value.Extent,
+                    GetName(),
+                    GetDiagnosticSeverity(),
+                    tokenOperations.Ast.Extent.File,
+                    null,
+                    GetCorrections(lcurly.Previous.Value, lcurly.Value, lcurly.Next.Value, false, true).ToList());
             }
         }
 
@@ -254,7 +260,7 @@ namespace Microsoft.Windows.PowerShell.ScriptAnalyzer.BuiltinRules
             foreach (var lCurly in tokenOperations.GetTokenNodes(TokenKind.LCurly))
             {
                 if (lCurly.Next == null
-                    || !IsPreviousTokenOnSameLine(lCurly)
+                    || !(lCurly.Previous == null || IsPreviousTokenOnSameLine(lCurly))
                     || lCurly.Next.Value.Kind == TokenKind.NewLine
                     || lCurly.Next.Value.Kind == TokenKind.LineContinuation
                     || lCurly.Next.Value.Kind == TokenKind.RCurly
@@ -390,8 +396,17 @@ namespace Microsoft.Windows.PowerShell.ScriptAnalyzer.BuiltinRules
                     testAst => testAst is CommandAst, true);
             foreach (CommandAst commandAst in commandAsts)
             {
+                /// When finding all the command parameter elements, there is no guarantee that
+                /// we will read them from the AST in the order they appear in the script (in token
+                /// order). So we first sort the tokens by their starting line number, followed by
+                /// their starting column number.
                 List<Ast> commandParameterAstElements = commandAst.FindAll(
-                    testAst => testAst.Parent == commandAst, searchNestedScriptBlocks: false).ToList();
+                        testAst => testAst.Parent == commandAst, searchNestedScriptBlocks: false
+                    ).OrderBy(
+                        e => e.Extent.StartLineNumber
+                    ).ThenBy(
+                        e => e.Extent.StartColumnNumber
+                    ).ToList();
                 for (int i = 0; i < commandParameterAstElements.Count - 1; i++)
                 {
                     IScriptExtent leftExtent = commandParameterAstElements[i].Extent;
@@ -493,6 +508,11 @@ namespace Microsoft.Windows.PowerShell.ScriptAnalyzer.BuiltinRules
             hasRedundantWhitespace = actualWhitespaceSize - whiteSpaceSize > 0;
             return whiteSpaceSize == actualWhitespaceSize;
         }
+        
+        private static bool IsPreviousTokenLParen(LinkedListNode<Token> tokenNode)
+        {
+            return tokenNode.Previous.Value.Kind == TokenKind.LParen;
+        }
 
         private static bool IsNextTokenApartByWhitespace(LinkedListNode<Token> tokenNode)
         {
@@ -528,6 +548,16 @@ namespace Microsoft.Windows.PowerShell.ScriptAnalyzer.BuiltinRules
                     tokenNode.Next.Value.Kind == TokenKind.Variable)
                 {
                     continue;
+                }
+
+                // exclude assignment operator inside of multi-line hash tables if requested
+                if (IgnoreAssignmentOperatorInsideHashTable && tokenNode.Value.Kind == TokenKind.Equals)
+                {
+                    Ast containingAst = tokenOperations.GetAstPosition(tokenNode.Value);
+                    if (containingAst is HashtableAst && containingAst.Extent.EndLineNumber != containingAst.Extent.StartLineNumber)
+                    {
+                        continue;
+                    }
                 }
 
                 var hasWhitespaceBefore = IsPreviousTokenOnSameLineAndApartByWhitespace(tokenNode);
@@ -595,7 +625,7 @@ namespace Microsoft.Windows.PowerShell.ScriptAnalyzer.BuiltinRules
         }
 
 
-        private bool IsPreviousTokenOnSameLine(LinkedListNode<Token> lparen)
+        private static bool IsPreviousTokenOnSameLine(LinkedListNode<Token> lparen)
         {
             return lparen.Previous.Value.Extent.EndLineNumber == lparen.Value.Extent.StartLineNumber;
         }

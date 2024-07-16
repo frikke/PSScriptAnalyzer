@@ -115,11 +115,6 @@ Describe "Cmdlet help" {
 	It "gets example code from <CommandName>" -TestCases $testCases {
 		($Help.Examples.Example | Select-Object -First 1).Code | Should -Not -BeNullOrEmpty
 	}
-
-	# Should be at least one example description
-	It "gets example help from $commandName" -TestCases $testCases {
-		($Help.Examples.Example.Remarks | Select-Object -First 1).Text | Should -Not -BeNullOrEmpty
-	}
 }
 
 Describe 'Cmdlet parameter help' {
@@ -180,7 +175,7 @@ Describe 'Cmdlet parameter help' {
 			)
 
 			BEGIN {
-				$Common = 'Debug', 'ErrorAction', 'ErrorVariable', 'InformationAction', 'InformationVariable', 'OutBuffer', 'OutVariable', 'PipelineVariable', 'Verbose', 'WarningAction', 'WarningVariable', 'WhatIf', 'Confirm'
+				$Common = [System.Management.Automation.PSCmdlet]::CommonParameters
 				$parameters = @()
 			}
 			PROCESS {
@@ -239,6 +234,25 @@ Describe 'Cmdlet parameter help' {
 			# To avoid calling Trim method on a null object.
 			$helpType = if ($parameterHelp.parameterValue) { $parameterHelp.parameterValue.Trim() }
 			$helpType | Should -Be $codeType -Because "help for $commandName has correct parameter type for $parameterName"
+
+			foreach($parameterAttribute in $parameter.Attributes) {
+				if ($parameterAttribute.ValueFromPipeline -eq $null) { continue }
+
+				$parameterHelpPipelineInput = if ($parameterHelp.pipelineInput -eq 'True (ByPropertyName, ByValue)') {
+					$true
+				}
+				else {
+					[System.Boolean]::Parse($parameterHelp.pipelineInput)
+				}
+
+				$parameterHelpPipelineInput | Should -Be $parameterAttribute.ValueFromPipelineByPropertyName `
+					-Because "Parameter $parameterName of command $CommandName and parameter set $($parameterAttribute.ParameterSetName) has correct ValueFromPipelineByPropertyName attribute"
+
+				if ($parameterHelp.pipelineInput -eq 'True (ByPropertyName, ByValue)') {
+					$parameterAttribute.ValueFromPipeline | Should -BeTrue `
+						-Because "Parameter $parameterName of command $CommandName and parameter set $($parameterAttribute.ParameterSetName) has correct ValueFromPipeline attribute"
+				}
+			}
 		}
 
 		foreach ($helpParam in $HelpParameterNames) {

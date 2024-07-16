@@ -68,6 +68,15 @@ if ($true)
             Invoke-ScriptAnalyzer -ScriptDefinition $def -Settings $settings | Should -BeNullOrEmpty
         }
 
+        It 'Should not find a violation if an open paren is before an opening brace' {
+            Invoke-ScriptAnalyzer -ScriptDefinition '$ast.Find({ $oneAst -is [TypeExpressionAst] })' -Settings $settings |
+                Should -BeNullOrEmpty
+        }
+
+        It 'Should not find a violation if an open paren is preceded by a Dot token' {
+            Invoke-ScriptAnalyzer -ScriptDefinition '$foo.{bar}' -Settings $settings |
+                Should -BeNullOrEmpty
+        }
     }
 
     Context "When a parenthesis follows a keyword" {
@@ -127,6 +136,7 @@ function foo($param) {
             $ruleConfiguration.CheckOperator = $true
             $ruleConfiguration.CheckPipe = $false
             $ruleConfiguration.CheckSeparator = $false
+            $ruleConfiguration.IgnoreAssignmentOperatorInsideHashTable = $false
         }
 
         It "Should find a violation if no whitespace around an assignment operator" {
@@ -180,6 +190,59 @@ $x = $true -and
             Invoke-ScriptAnalyzer -ScriptDefinition $def -Settings $settings | Should -Be $null
         }
 
+        It "Should find violation if not asked to ignore assignment operator in hash table" {
+            $def = @'
+$ht = @{
+    variable = 3
+    other    = 4
+}
+'@
+            $violations = Invoke-ScriptAnalyzer -ScriptDefinition $def -Settings $settings
+            Test-CorrectionExtentFromContent $def $violations 1 '    ' ' '
+        }
+    }
+
+    Context "When asked to ignore assignment operator inside hash table" {
+        BeforeAll {
+            $ruleConfiguration.CheckInnerBrace = $false
+            $ruleConfiguration.CheckOpenParen = $false
+            $ruleConfiguration.CheckOpenBrace = $false
+            $ruleConfiguration.CheckOperator = $true
+            $ruleConfiguration.CheckPipe = $false
+            $ruleConfiguration.CheckSeparator = $false
+            $ruleConfiguration.IgnoreAssignmentOperatorInsideHashTable = $true
+        }
+        It "Should not find violation if assignment operator is in multi-line hash table" {
+            $def = @'
+$ht = @{
+    variable = 3
+    other    = 4
+}
+'@
+            Invoke-ScriptAnalyzer -ScriptDefinition $def -Settings $settings | Should -Be $null
+        }
+
+        It "Should find violation if assignment operator has extra space in single-line hash table" {
+            $def = @'
+$h = @{
+    ht = @{a = 3; b   = 4}
+    eb = 33
+}
+'@
+            $violations = Invoke-ScriptAnalyzer -ScriptDefinition $def -Settings $settings
+            Test-CorrectionExtentFromContent $def $violations 1 '   ' ' '
+        }
+
+        It "Should find violation for extra space around non-assignment operator inside hash table" {
+            $def = @'
+$ht = @{
+    variable = 3
+    other    = 4 +  7
+}
+'@
+            $violations = Invoke-ScriptAnalyzer -ScriptDefinition $def -Settings $settings
+            Test-CorrectionExtentFromContent $def $violations 1 '  ' ' '
+        }
     }
 
     Context "When a comma is not followed by a space" {
@@ -445,6 +508,10 @@ if ($true) { Get-Item `
 '@
             Invoke-ScriptAnalyzer -ScriptDefinition $def -Settings $settings | Should -Be $null
         }
+
+        It 'Should not throw when analysing a line starting with a scriptblock' {
+            { Invoke-ScriptAnalyzer -ScriptDefinition '{ }' -Settings $settings -ErrorAction Stop } | Should -Not -Throw
+        }
     }
 
 
@@ -470,6 +537,12 @@ bar -h i `
 
         It "Should not find no violation if there is always 1 space between parameters except when using colon syntax" {
             $def = 'foo -bar $baz @splattedVariable -bat -parameterName:$parameterValue'
+            Invoke-ScriptAnalyzer -ScriptDefinition $def -Settings $settings | Should -Be $null
+        }
+
+        It "Should not find a violation when redirect operators, spearated by 1 space, are used and not in stream order" {
+            # Related to Issue #2000
+            $def = 'foo 3>&1 1>$null 2>&1'
             Invoke-ScriptAnalyzer -ScriptDefinition $def -Settings $settings | Should -Be $null
         }
 
@@ -510,6 +583,14 @@ bar -h i `
 -switch}
             Invoke-Formatter -ScriptDefinition "$def" -Settings $settings |
                 Should -Be "$expected"
+        }
+
+        It "Should fix script when redirects are involved and whitespace is not consistent" {
+            # Related to Issue #2000
+            $def = 'foo   3>&1  1>$null   2>&1'
+            $expected = 'foo 3>&1 1>$null 2>&1'
+            Invoke-Formatter -ScriptDefinition $def -Settings $settings |
+                Should -Be $expected
         }
     }
 }

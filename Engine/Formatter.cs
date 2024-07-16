@@ -32,7 +32,7 @@ namespace Microsoft.Windows.PowerShell.ScriptAnalyzer
             ValidateNotNull(settings, "settings");
             ValidateNotNull(cmdlet, "cmdlet");
 
-            Helper.Instance = new Helper(cmdlet.SessionState.InvokeCommand, cmdlet);
+            Helper.Instance = new Helper(cmdlet.SessionState.InvokeCommand);
             Helper.Instance.Initialize();
 
             var ruleOrder = new string[]
@@ -45,6 +45,8 @@ namespace Microsoft.Windows.PowerShell.ScriptAnalyzer
                 "PSUseCorrectCasing",
                 "PSAvoidUsingCmdletAliases",
                 "PSAvoidUsingDoubleQuotesForConstantString",
+                "PSAvoidSemicolonsAsLineTerminators",
+                "PSAvoidExclaimOperator",
             };
 
             var text = new EditableText(scriptDefinition);
@@ -60,7 +62,7 @@ namespace Microsoft.Windows.PowerShell.ScriptAnalyzer
 
                 var currentSettings = GetCurrentSettings(settings, rule);
                 ScriptAnalyzer.Instance.UpdateSettings(currentSettings);
-                ScriptAnalyzer.Instance.Initialize(cmdlet, null, null, null, null, true, false);
+                ScriptAnalyzer.Instance.Initialize(cmdlet, null, null, null, null, true, SuppressionPreference.Omit);
 
                 text = ScriptAnalyzer.Instance.Fix(text, range, skipParsing, out Range updatedRange, out bool fixesWereApplied, ref scriptAst, ref scriptTokens, skipVariableAnalysis: true);
                 skipParsing = !fixesWereApplied;

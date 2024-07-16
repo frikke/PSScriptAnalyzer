@@ -102,7 +102,7 @@ function Remove-Build
 function Start-DocumentationBuild
 {
     $docsPath = Join-Path $projectRoot docs
-    $markdownDocsPath = Join-Path $docsPath markdown
+    $markdownDocsPath = Join-Path $docsPath Cmdlets
     $outputDocsPath = Join-Path $script:destinationDir en-US
     $platyPS = Get-Module -ListAvailable platyPS
     if ($null -eq $platyPS -or ($platyPS | Sort-Object Version -Descending | Select-Object -First 1).Version -lt [version]0.12)
@@ -161,7 +161,7 @@ function Start-ScriptAnalyzerBuild
         # install the proper version
         Install-Dotnet
         if ( -not (Test-SuitableDotnet) ) {
-            $requiredVersion = Get-GlobalJsonSdkVersion
+            $requiredVersion = $script:wantedVersion
             $foundVersion = Get-InstalledCLIVersion
             Write-Warning "No suitable dotnet CLI found, requires version '$requiredVersion' found only '$foundVersion'"
         }
@@ -184,6 +184,7 @@ function Start-ScriptAnalyzerBuild
         {
             # Build all the versions of the analyzer
             foreach ($psVersion in 3, 4, 5, 7) {
+                Write-Verbose -Verbose -Message "Configuration: $Configuration PSVersion: $psVersion"
                 Start-ScriptAnalyzerBuild -Configuration $Configuration -PSVersion $psVersion -Verbose:$verboseWanted
             }
             if ( $Catalog ) {
@@ -200,13 +201,13 @@ function Start-ScriptAnalyzerBuild
             Set-Variable -Name profilesCopied -Value $true -Scope 1
         }
 
-        $framework = 'net452'
+        $framework = 'net462'
         if ($PSVersion -eq 7) {
-            $framework = 'netcoreapp3.1'
+            $framework = 'net6'
         }
 
         # build the appropriate assembly
-        if ($PSVersion -match "[34]" -and $Framework -ne "net452")
+        if ($PSVersion -match "[34]" -and $Framework -ne "net462")
         {
             throw ("ScriptAnalyzer for PS version '{0}' is not applicable to {1} framework" -f $PSVersion,$Framework)
         }
@@ -271,12 +272,17 @@ function Start-ScriptAnalyzerBuild
                 $dotnetArgs += "${PSScriptRoot}\bin\${buildConfiguration}\${framework}"
             }
             $buildOutput = & $script:DotnetExe $dotnetArgs 2>&1
-            if ( $LASTEXITCODE -ne 0 ) { throw "$buildOutput" }
+            if ( $LASTEXITCODE -ne 0 ) {
+                Write-Verbose -Verbose -Message "dotnet is $(${script:DotnetExe}.Source)"
+                $dotnetArgs | Foreach-Object {"dotnetArg: $_"} | Write-Verbose -Verbose
+                Get-PSCallStack | Write-Verbose -Verbose
+                throw $buildOutput
+            }
             Write-Verbose -Verbose:$verboseWanted -message "$buildOutput"
         }
         catch {
-            Write-Warning $_
-            Write-Error "Failure to build for PSVersion '$PSVersion' using framework '$framework' and configuration '$config'"
+            $_.TargetObject | Write-Warning
+            Write-Error "Failure to build for PSVersion '$PSVersion' using framework '$framework' and configuration '$buildConfiguration'"
             throw
         }
         finally {
@@ -311,14 +317,17 @@ function Start-ScriptAnalyzerBuild
         $settingsFiles = Get-Childitem "$projectRoot\Engine\Settings" | ForEach-Object -MemberName FullName
         Publish-File $settingsFiles (Join-Path -Path $script:destinationDir -ChildPath Settings)
 
-        if ($framework -eq 'net452') {
-            if ( $env:TF_BUILD ) {
-                $nsoft =  "$projectRoot\bin\${buildConfiguration}\${framework}\Newtonsoft.Json.dll"
-            }
-            else {
-                $nsoft =  "$projectRoot\Rules\bin\${buildConfiguration}\${framework}\Newtonsoft.Json.dll"
-            }
+        $rulesProjectOutputDir = if ($env:TF_BUILD) {
+            "$projectRoot\bin\${buildConfiguration}\${framework}" }
+        else {
+            "$projectRoot\Rules\bin\${buildConfiguration}\${framework}"
+        }
+        if ($framework -eq 'net462') {
+            $nsoft = Join-Path $rulesProjectOutputDir 'Newtonsoft.Json.dll'
             Copy-Item -path $nsoft -Destination $destinationDirBinaries
+        }
+        else {
+            Copy-Item -Path (Join-Path $rulesProjectOutputDir 'Pluralize.NET.dll') -Destination $destinationDirBinaries
         }
 
         Pop-Location
@@ -378,14 +387,15 @@ function Test-ScriptAnalyzer
             $testModulePath = Join-Path "${projectRoot}" -ChildPath out
         }
         $testResultsFile = "'$(Join-Path ${projectRoot} -childPath TestResults.xml)'"
-        $testScripts = "'${projectRoot}\Tests\Engine','${projectRoot}\Tests\Rules','${projectRoot}\Tests\Documentation'"
+        $testScripts = "'${projectRoot}\Tests\Build','${projectRoot}\Tests\Engine','${projectRoot}\Tests\Rules','${projectRoot}\Tests\Documentation'"
         try {
             if ( $major -lt 5 ) {
                 Rename-Item $script:destinationDir ${testModulePath}
             }
             $savedModulePath = $env:PSModulePath
             $env:PSModulePath = "${testModulePath}{0}${env:PSModulePath}" -f [System.IO.Path]::PathSeparator
-            $scriptBlock = [scriptblock]::Create("Import-Module PSScriptAnalyzer; Invoke-Pester -Path $testScripts")
+            $analyzerPsd1Path = Join-Path -Path $script:destinationDir -ChildPath "$analyzerName.psd1"
+            $scriptBlock = [scriptblock]::Create("Import-Module '$analyzerPsd1Path'; Invoke-Pester -Path $testScripts")
             if ( $InProcess ) {
                 & $scriptBlock
             }
@@ -446,7 +456,7 @@ function Install-Dotnet
         $installScriptPath = Receive-DotnetInstallScript
         $installScriptName = [System.IO.Path]::GetFileName($installScriptPath)
         If ( $PSCmdlet.ShouldProcess("$installScriptName for $version")) {
-            & "${installScriptPath}" -c release -version $version
+            & "${installScriptPath}" -c release -version $version -SkipNonVersionedFiles
         }
         # this may be the first time that dotnet has been installed,
         # set up the executable variable
@@ -536,12 +546,12 @@ function ConvertTo-PortableVersion {
     }
 }
 
-# see https://docs.microsoft.com/en-us/dotnet/core/tools/global-json for rules
+# see https://learn.microsoft.com/dotnet/core/tools/global-json for rules
 # on how version checks are done
 function Test-SuitableDotnet {
     param (
         $availableVersions = $( Get-InstalledCliVersion),
-        $requiredVersion = $( Get-GlobalJsonSdkVersion )
+        $requiredVersion = $script:wantedVersion
         )
 
     if ( $requiredVersion -is [String] -or $requiredVersion -is [Version] ) {
@@ -606,7 +616,7 @@ function Get-InstalledCLIVersion {
 function Test-DotnetInstallation
 {
     param (
-        $requestedVersion = $( Get-GlobalJsonSdkVersion ),
+        $requestedVersion = $script:wantedVersion,
         $installedVersions = $( Get-InstalledCLIVersion )
         )
     return (Test-SuitableDotnet -availableVersions $installedVersions -requiredVersion $requestedVersion )
@@ -667,7 +677,8 @@ function Receive-DotnetInstallScript
 
 function Get-DotnetExe
 {
-    $discoveredDotnet = Get-Command -CommandType Application dotnet -ErrorAction SilentlyContinu
+    param ( $version = $script:wantedVersion )
+    $discoveredDotnet = Get-Command -CommandType Application dotnet -ErrorAction SilentlyContinue -All
     if ( $discoveredDotnet ) {
         # it's possible that there are multiples. Take the highest version we find
         # the problem is that invoking dotnet on a version which is lower than the specified
@@ -678,13 +689,17 @@ function Get-DotnetExe
         # file points to a version of the sdk which is *not* installed. However, the format of the new list
         # with --version has a couple of spaces at the beginning of the line, so we need to be resilient
         # against that.
-        $latestDotnet = $discoveredDotNet |
-            Where-Object { try { & $_ --version 2>$null } catch { } } |
-            Sort-Object { $pv = ConvertTo-PortableVersion (& $_ --version 2>$null| %{$_.Trim().Split()[0]}); "$pv" } |
+        $properDotnet = $discoveredDotNet |
+            Where-Object {
+                & $_ --list-sdks |
+                    Where-Object {
+                        $_ -match $version
+                    }
+            } |
             Select-Object -Last 1
-        if ( $latestDotnet ) {
-            $script:DotnetExe = $latestDotnet
-            return $latestDotnet
+        if ( $properDotnet ) {
+            $script:DotnetExe = $properDotnet
+            return $properDotnet
         }
     }
     # it's not in the path, try harder to find it by checking some usual places
@@ -708,7 +723,16 @@ function Get-DotnetExe
     Write-Warning "Could not find dotnet executable"
     return [String]::Empty
 }
-$script:DotnetExe = Get-DotnetExe
+
+try {
+    # The version we want based on the global.JSON file
+    # suck this before getting the dotnet exe
+    $script:wantedVersion = Get-GlobalJsonSdkVersion -Raw
+    $script:DotnetExe = Get-DotnetExe
+}
+catch {
+    Write-Warning "Could not find dotnet executable"
+}
 
 # Copies the built PSCompatibilityCollector module to the output destination for PSSA
 function Copy-CrossCompatibilityModule
@@ -754,5 +778,56 @@ function Copy-CrossCompatibilityModule
             # Display the problem as a warning, but continue
             Write-Warning $_
         }
+    }
+}
+
+# copy the manifest into the module if is present
+function Copy-Manifest
+{
+    param ( [switch]$signed )
+    if ( $signed ) {
+        $buildRoot = "signed"
+    }
+    else {
+        $buildRoot = "out"
+    }
+    $analyzerVersion = Get-AnalyzerVersion
+    # location where analyzer goes
+    # debugging
+    (Get-ChildItem -File -Recurse)|ForEach-Object {Write-Verbose -Verbose -Message $_}
+    $modBaseDir = [io.path]::Combine($projectRoot,${buildRoot},"${analyzerName}", $analyzerVersion)
+    # copy the manifest files
+    Push-Location $buildRoot
+    if ( Test-Path _manifest ) {
+        Copy-Item -Recurse -Path _manifest -Destination $modBaseDir -Verbose
+    }
+    else {
+        Write-Warning -Message "_manifest not found in $PWD"
+    }
+    Pop-Location
+}
+
+# creates the nuget package which can be used for publishing to the gallery
+function Start-CreatePackage
+{
+    [System.Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseCompatibleCommands', '')]
+    param ( [switch]$signed )
+    try {
+        if ( $signed ) {
+            $buildRoot = "signed"
+        }
+        else {
+            $buildRoot = "out"
+        }
+        $repoName = [guid]::NewGuid().ToString()
+        $nupkgDir = Join-Path $PSScriptRoot $buildRoot
+        $null = Register-PSRepository -Name $repoName -InstallationPolicy Trusted -SourceLocation $nupkgDir
+        Push-Location $nupkgDir
+
+        Publish-Module -Path $PWD/PSScriptAnalyzer -Repository $repoName
+    }
+    finally {
+       Pop-Location
+       Unregister-PSRepository -Name $repoName
     }
 }

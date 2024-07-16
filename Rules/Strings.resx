@@ -292,7 +292,7 @@
     <value>Password parameters that take in plaintext will expose passwords and compromise the security of your system.</value>
   </data>
   <data name="AvoidUsingPlainTextForPasswordError" xml:space="preserve">
-    <value>Parameter '{0}' should use SecureString, otherwise this will expose sensitive information. See ConvertTo-SecureString for more information.</value>
+    <value>Parameter '{0}' should not use String type but either SecureString or PSCredential, otherwise it increases the chance to expose this sensitive information.</value>
   </data>
   <data name="AvoidUsingPlainTextForPasswordCommonName" xml:space="preserve">
     <value>Avoid Using Plain Text For Password Parameter</value>
@@ -778,7 +778,7 @@
     <value>Replace {0} with {1}</value>
   </data>
   <data name="AvoidUsingPlainTextForPasswordCorrectionDescription" xml:space="preserve">
-    <value>Set {0} type to SecureString</value>
+    <value>Set {0} type to {1}</value>
   </data>
   <data name="MissingModuleManifestFieldCorrectionDescription" xml:space="preserve">
     <value>Add {0} = {1} to the module manifest</value>
@@ -921,6 +921,18 @@
   <data name="AvoidLongLinesError" xml:space="preserve">
     <value>Line exceeds the configured maximum length of {0} characters</value>
   </data>
+  <data name="AvoidSemicolonsAsLineTerminatorsName" xml:space="preserve">
+    <value>AvoidSemicolonsAsLineTerminators</value>
+  </data>
+  <data name="AvoidSemicolonsAsLineTerminatorsCommonName" xml:space="preserve">
+    <value>Avoid semicolons as line terminators</value>
+  </data>
+  <data name="AvoidSemicolonsAsLineTerminatorsDescription" xml:space="preserve">
+    <value>Line should not end with a semicolon</value>
+  </data>
+  <data name="AvoidSemicolonsAsLineTerminatorsError" xml:space="preserve">
+    <value>Line ends with a semicolon</value>
+  </data>
   <data name="PlaceOpenBraceName" xml:space="preserve">
     <value>PlaceOpenBrace</value>
   </data>
@@ -1057,7 +1069,7 @@
     <value>'&gt;' is not a comparison operator. Use  '-gt' (greater than) or '-ge' (greater or equal).</value>
   </data>
   <data name="PossibleIncorrectUsageOfRedirectionOperatorDescription" xml:space="preserve">
-    <value>When switching between different languages it is easy to forget that '&gt;' does not mean 'great than' in PowerShell.</value>
+    <value>When switching between different languages it is easy to forget that '&gt;' does not mean 'greater than' in PowerShell.</value>
   </data>
   <data name="PossibleIncorrectUsageOfRedirectionOperatorError" xml:space="preserve">
     <value>Did you mean to use the redirection operator '&gt;'? The comparison operators in PowerShell are '-gt' (greater than) or '-ge' (greater or equal).</value>
@@ -1087,7 +1099,7 @@
     <value>For better readability and consistency, use the exact casing of the cmdlet/function/parameter.</value>
   </data>
   <data name="UseCorrectCasingError" xml:space="preserve">
-    <value>Cmdlet/Function/Parameter does not match its exact casing '{0}'.</value>
+    <value>Function/Cmdlet '{0}' does not match its exact casing '{1}'.</value>
   </data>
   <data name="UseCorrectCasingName" xml:space="preserve">
     <value>UseCorrectCasing</value>
@@ -1148,5 +1160,62 @@
   </data>
   <data name="AvoidUsingDoubleQuotesForConstantStringError" xml:space="preserve">
     <value>Use single quotes when a string is constant.</value>
+  </data>
+  <data name="InvalidSyntaxAroundProcessBlockError" xml:space="preserve">
+    <value>When using an explicit process block, no preceding code is allowed, only begin, end and dynamicparams blocks.</value>
+  </data>
+  <data name="AvoidMultipleTypeAttributesCommonName" xml:space="preserve">
+    <value>Avoid multiple type specifiers on parameters</value>
+  </data>
+  <data name="AvoidMultipleTypeAttributesDescription" xml:space="preserve">
+    <value>Prameter should not have more than one type specifier.</value>
+  </data>
+  <data name="AvoidMultipleTypeAttributesError" xml:space="preserve">
+    <value>Parameter '{0}' has more than one type specifier.</value>
+  </data>
+  <data name="AvoidMultipleTypeAttributesName" xml:space="preserve">
+    <value>AvoidMultipleTypeAttributes</value>
+  </data>
+  <data name="AvoidUsingBrokenHashAlgorithmsCommonName" xml:space="preserve">
+    <value>Avoid Using Broken Hash Algorithms</value>
+  </data>
+  <data name="AvoidUsingBrokenHashAlgorithmsDescription" xml:space="preserve">
+    <value>Avoid using the broken algorithms MD5 or SHA-1.</value>
+  </data>
+  <data name="AvoidUsingBrokenHashAlgorithmsError" xml:space="preserve">
+    <value>The Algorithm parameter of cmdlet '{0}' was used with the broken algorithm '{1}'.</value>
+  </data>
+  <data name="AvoidUsingBrokenHashAlgorithmsName" xml:space="preserve">
+    <value>AvoidUsingBrokenHashAlgorithms</value>
+  </data>
+  <data name="UseCorrectCasingParameterError" xml:space="preserve">
+    <value>Parameter '{0}' of function/cmdlet '{1}' does not match its exact casing '{2}'.</value>
+  </data>
+  <data name="AvoidExclaimOperatorName" xml:space="preserve">
+    <value>AvoidExclaimOperator</value>
+  </data>
+  <data name="AvoidExclaimOperatorCommonName" xml:space="preserve">
+    <value>Avoid exclaim operator</value>
+  </data>
+  <data name="AvoidExclaimOperatorDescription" xml:space="preserve">
+    <value>The negation operator ! should not be used for readability purposes. Use -not instead.</value>
+  </data>
+  <data name="AvoidExclaimOperatorError" xml:space="preserve">
+    <value>Avoid using the ! negation operator</value>
+  </data>
+  <data name="AvoidExclaimOperatorCorrectionDescription" xml:space="preserve">
+    <value>Replace ! with -not</value>
+  </data>
+  <data name="AvoidUsingAllowUnencryptedAuthenticationCommonName" xml:space="preserve">
+    <value>Avoid AllowUnencryptedAuthentication Switch</value>
+  </data>
+  <data name="AvoidUsingAllowUnencryptedAuthenticationDescription" xml:space="preserve">
+    <value>Avoid sending credentials and secrets over unencrypted connections.</value>
+  </data>
+  <data name="AvoidUsingAllowUnencryptedAuthenticationError" xml:space="preserve">
+    <value>The insecure AllowUsingUnencryptedAuthentication switch was used. This should be avoided except for compatability with legacy systems.</value>
+  </data>
+  <data name="AvoidUsingAllowUnencryptedAuthenticationName" xml:space="preserve">
+    <value>AvoidUsingAllowUnencryptedAuthentication</value>
   </data>
 </root>
